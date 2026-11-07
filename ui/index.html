@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>果剧桌面</title>
+  <link rel="icon" href="./icon.svg">
+  <script src="./theme-boot.js"></script>
+  <link rel="stylesheet" href="./theme.css">
+  <script src="./episode-hold.js" defer></script>
+  <script src="./app.js" defer></script>
+  <script src="./reader.js" defer></script>
+  <script src="./library.js" defer></script>
+  <script src="./notes.js" defer></script>
+  <script src="./player-extras.js" defer></script>
+  <script src="./actors.js" defer></script>
+  <script src="./feed.js" defer></script>
+  <script src="./enhance.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <button class="brand" type="button" aria-label="果剧首页">果剧</button>
+      <nav id="nav">
+        <button class="nav active" data-category="discover">首页</button>
+        <button class="nav nav-feed" data-feed="1" title="不知道看什么？一部接一部自动播放">刷剧</button>
+        <button class="nav" data-category="hot-drama">热门推荐</button>
+        <button class="nav" data-category="real-drama">真人短剧</button>
+        <button class="nav" data-category="comic-drama">漫剧</button>
+        <button class="nav" data-category="ai-drama">AI 短剧</button>
+        <button class="nav" data-actors="1">演员</button>
+        <button class="nav" data-mine="1">我的</button>
+        <span class="nav-divider"></span>
+        <button class="nav" data-library="novel">小说</button>
+        <button class="nav" data-library="audio">听书</button>
+      </nav>
+      <div class="topbar-right">
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换白天 / 深夜模式" title="切换白天 / 深夜模式"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/></svg></button>
+        <label class="search-wrap" title="搜索">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+          <input id="search" type="search" placeholder="片名，按 Enter 搜索" autocomplete="off">
+        </label>
+      </div>
+    </header>
+
+    <main class="main">
+      <section id="browse" class="browse" data-view="home">
+        <div class="heading">
+          <h1 id="page-title">首页</h1>
+          <div id="genres" class="genres" hidden></div>
+          <p id="page-subtitle"></p>
+          <button id="refresh" class="subtle" type="button">↻ 刷新</button>
+        </div>
+        <div id="hero" class="hero" hidden>
+          <div class="hero-art"><img id="hero-backdrop" class="hero-backdrop" alt="" decoding="async"><img id="hero-poster" class="hero-poster" alt="" decoding="async"></div>
+          <div class="hero-shade"></div>
+          <div class="hero-copy">
+            <span class="hero-kicker"><i>果</i>短 剧</span>
+            <h1 id="hero-title"></h1>
+            <div id="hero-meta" class="hero-meta"></div>
+            <p id="hero-description"></p>
+            <div class="hero-actions">
+              <button id="hero-play" type="button"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.6v14.8a.8.8 0 0 0 1.2.7l12-7.4a.8.8 0 0 0 0-1.4l-12-7.4A.8.8 0 0 0 7 4.6Z"/></svg><span id="hero-play-label">播放</span></button>
+              <button id="hero-info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.6v.2"/></svg>详情</button>
+            </div>
+          </div>
+          <div id="hero-dots" class="hero-dots"></div>
+        </div>
+        <div id="status" class="status">正在载入剧目…</div>
+        <div id="rails" class="rails"></div>
+        <button id="more" class="more" hidden>下滑自动加载更多</button>
+      </section>
+
+      <section id="actors" class="actors-page" hidden>
+        <div class="heading">
+          <div><h1 id="actors-title">按演员找剧</h1><p>选一位演员，查看参演短剧。</p></div>
+          <button id="actor-back" class="subtle" hidden>← 返回演员榜</button>
+        </div>
+        <div id="actor-status" class="status">正在加载演员榜…</div>
+        <div id="actor-list" class="actor-list"></div>
+        <div id="actor-works" class="cards" hidden></div>
+        <button id="actor-more" class="more" hidden>查看更多演员</button>
+      </section>
+
+      <section id="mine" class="mine-page" hidden>
+        <div class="heading"><div><h1>我的</h1><p>观看进度、片单和阅读记录只保存在这台电脑上。</p></div></div>
+        <div id="mine-content" class="mine-content"></div>
+        <section class="about-card" aria-label="关于与更新">
+          <div class="about-mark">果剧</div>
+          <div class="about-copy">
+            <strong>果剧桌面 <span id="app-version"></span></strong>
+            <p id="update-status">正在读取版本信息…</p>
+          </div>
+          <button id="update-check" class="cta-btn small" type="button">检查更新</button>
+        </section>
+      </section>
+
+      <section id="feed" class="feed" hidden aria-label="刷剧：自动播放推荐短剧">
+        <img id="feed-bg" class="feed-bg" alt="" aria-hidden="true">
+        <div class="feed-stage">
+          <div id="feed-card" class="feed-card">
+            <img id="feed-poster" class="feed-poster" alt="">
+            <video id="feed-video" playsinline preload="auto"></video>
+            <div class="feed-spinner" aria-hidden="true"></div>
+            <div class="feed-paused" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.2v13.6a.7.7 0 0 0 1.1.6l10.6-6.8a.7.7 0 0 0 0-1.2L9.1 4.6a.7.7 0 0 0-1.1.6Z"/></svg></div>
+            <div id="feed-status" class="feed-status" hidden></div>
+            <div class="feed-info">
+              <span id="feed-episode" class="feed-episode"></span>
+              <h2 id="feed-title"></h2>
+              <div id="feed-tags" class="feed-tags"></div>
+              <p id="feed-intro" title="点击展开 / 收起"></p>
+              <button id="feed-watch" class="feed-watch" type="button"><span id="feed-watch-label">看全集</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+            </div>
+            <div id="feed-progress" class="feed-progress" title="点击跳转"><i id="feed-progress-fill"></i></div>
+          </div>
+          <div class="feed-side">
+            <div class="feed-act"><span id="feed-list-slot" class="feed-list-slot"></span><small>片单</small></div>
+            <button id="feed-detail" class="feed-act" type="button" title="剧集详情"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.6v.2"/></svg></i><small>详情</small></button>
+            <button id="feed-full" class="feed-act" type="button" title="用完整播放器看（Enter）"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="2.5" y="9" width="14" height="11" rx="1.2"/><path d="M5.5 6h13a1 1 0 0 1 1 1v9.5M8.5 3h12a1 1 0 0 1 1 1v9"/></svg></i><small>选集</small></button>
+            <button id="feed-mute" class="feed-act" type="button" title="声音（M）"><i><svg class="i-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.2h3.8L12 5v14l-4.7-4.2H3.5z" fill="currentColor"/><path d="M15.4 9a4.2 4.2 0 0 1 0 6M18 6.3a8 8 0 0 1 0 11.4"/></svg><svg class="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.2h3.8L12 5v14l-4.7-4.2H3.5z" fill="currentColor"/><path d="m15.5 9.5 5 5m0-5-5 5"/></svg></i><small id="feed-mute-label">声音</small></button>
+          </div>
+        </div>
+        <div class="feed-nav">
+          <button id="feed-prev" type="button" aria-label="上一部" title="上一部（↑）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg></button>
+          <button id="feed-next" type="button" aria-label="下一部" title="下一部（↓）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        </div>
+        <p class="feed-hint">滚轮 / ↑↓ / 上下拖动 换一部 · 空格 暂停 · Enter 看全集</p>
+      </section>
+
+      <section id="theater" class="theater" hidden>
+        <div class="theater-bar">
+          <button id="back" class="icon-btn" type="button" aria-label="返回" title="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H4m0 0 7-7m-7 7 7 7"/></svg></button>
+          <span id="theater-count"></span>
+        </div>
+        <div class="theater-layout">
+          <div class="player-col">
+            <div class="video-frame"><canvas id="ambient" class="ambient" width="36" height="64" aria-hidden="true"></canvas><video id="video" playsinline></video><canvas id="enhance-canvas" class="enhance" aria-hidden="true"></canvas><div id="danmaku-layer" class="danmaku-layer"></div><div id="video-status" class="video-status" hidden></div><div class="buffering" aria-hidden="true"></div></div>
+            <div class="player-actions">
+              <div class="timeline"><input id="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度"><span id="time-label">0:00</span></div>
+              <div class="action-row">
+                <div class="transport">
+                  <button id="toggle-play" class="icon-btn" type="button" aria-label="播放或暂停" title="播放 / 暂停（空格）">
+                    <svg class="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M6.5 3.8v16.4a.8.8 0 0 0 1.2.7l13.1-8.2a.8.8 0 0 0 0-1.4L7.7 3.1a.8.8 0 0 0-1.2.7Z"/></svg>
+                    <svg class="i-pause" viewBox="0 0 24 24"><rect x="5" y="3.5" width="4.6" height="17" rx="1" fill="currentColor"/><rect x="14.4" y="3.5" width="4.6" height="17" rx="1" fill="currentColor"/></svg>
+                  </button>
+                  <button id="back-ten" class="icon-btn" type="button" aria-label="后退十秒" title="后退 10 秒（←）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5a8.5 8.5 0 1 1-8.5 8.5"/><path d="m14.5 2-2.5 2.5L14.5 7"/><text x="12.4" y="16.6" fill="currentColor" stroke="none" font-size="7.6" font-weight="700" text-anchor="middle" font-family="Segoe UI, sans-serif">10</text></svg></button>
+                  <button id="forward-ten" class="icon-btn" type="button" aria-label="前进十秒" title="前进 10 秒（→）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5a8.5 8.5 0 1 0 8.5 8.5"/><path d="M9.5 2 12 4.5 9.5 7"/><text x="11.6" y="16.6" fill="currentColor" stroke="none" font-size="7.6" font-weight="700" text-anchor="middle" font-family="Segoe UI, sans-serif">10</text></svg></button>
+                  <div class="volume">
+                    <button id="mute" class="icon-btn" type="button" aria-label="静音" title="静音（M）">
+                      <svg class="i-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.2h3.8L12 5v14l-4.7-4.2H3.5z" fill="currentColor"/><path d="M15.4 9a4.2 4.2 0 0 1 0 6M18 6.3a8 8 0 0 1 0 11.4"/></svg>
+                      <svg class="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.2h3.8L12 5v14l-4.7-4.2H3.5z" fill="currentColor"/><path d="m15.5 9.5 5 5m0-5-5 5"/></svg>
+                    </button>
+                    <input id="volume" type="range" min="0" max="100" value="100" aria-label="音量">
+                  </div>
+                </div>
+                <strong id="now-playing"></strong>
+                <div class="player-tools">
+                  <button id="prev" class="icon-btn" type="button" aria-label="上一集" title="上一集（↑）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M18 5.5v13L8.5 12z"/><path d="M6 5v14" stroke-linecap="round"/></svg></button>
+                  <button id="next" class="icon-btn" type="button" aria-label="下一集" title="下一集（↓）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 5.5v13l9.5-6.5z"/><path d="M18 5v14" stroke-linecap="round"/></svg></button>
+                  <button id="danmaku-btn" class="icon-btn" type="button" aria-label="弹幕开关" title="弹幕（D）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="3"/><text x="12" y="16.3" fill="currentColor" stroke="none" font-size="10.5" font-weight="800" text-anchor="middle" font-family="Microsoft YaHei UI, sans-serif">弹</text></svg></button>
+                  <button id="episodes-toggle" class="icon-btn" type="button" aria-label="选集" title="选集"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="2.5" y="9" width="14" height="11" rx="1.2"/><path d="M5.5 6h13a1 1 0 0 1 1 1v9.5M8.5 3h12a1 1 0 0 1 1 1v9"/></svg></button>
+                  <button id="comments-toggle" class="icon-btn" type="button" aria-label="评论" title="评论"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 4.5h18v12h-9.5L7 20.5v-4H3z"/><path d="M7 9h10M7 12.5h6"/></svg></button>
+                  <button id="orientation-btn" class="icon-btn" type="button" aria-label="切换竖屏 / 横屏窗口" title="竖屏 / 横屏窗口（R）" hidden><svg class="i-portrait" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M10.5 18.5h3" stroke-linecap="round"/></svg><svg class="i-landscape" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><path d="M18.5 10.5v3" stroke-linecap="round"/></svg></button>
+                  <button id="settings-toggle" class="icon-btn" type="button" aria-label="播放设置" title="画质 / 速度 / 弹幕"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 18.5a9 9 0 1 1 16 0"/><path d="m12 14 4.2-4.6"/><circle cx="12" cy="14" r="1.4" fill="currentColor"/></svg></button>
+                  <button id="fullscreen" class="icon-btn" type="button" aria-label="全屏" title="全屏（F）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9V3.5H9M15 3.5h5.5V9M20.5 15v5.5H15M9 20.5H3.5V15"/></svg></button>
+                </div>
+              </div>
+              <div id="settings-panel" class="settings-panel" hidden>
+                <div class="setting"><span>画质</span><select id="quality"><option value="auto">自动（最高）</option><option value="1080p">1080P</option><option value="720p">720P</option></select></div>
+                <div class="setting"><span>片源</span><select id="source"><option value="enhanced">锐利（手机版）</option><option value="plain">高码率</option></select></div>
+                <div class="setting"><span>播放速度</span><select id="speed"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
+                <div class="setting"><span>画质增强</span><select id="enhance"><option value="0">关闭</option><option value="0.5">标准</option><option value="0.9">强</option><option value="ultra">超清</option></select></div>
+                <div class="setting"><span>画面</span><select id="fit"><option value="contain">完整画面</option><option value="cover">铺满屏幕</option></select></div>
+                <label class="setting switch-row"><span>弹幕</span><input id="danmaku-toggle" type="checkbox"><i class="switch"></i></label>
+              </div>
+            </div>
+          </div>
+          <aside class="detail-col drawer" aria-label="选集">
+            <div class="drawer-top">
+              <button class="drawer-close" type="button" aria-label="关闭选集"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+              <div class="series-heading">
+                <div id="detail-cover" class="detail-cover"></div>
+                <div class="series-copy">
+                  <span class="detail-label">剧集</span>
+                  <h2 id="series-title"></h2>
+                  <div id="series-meta" class="series-meta"></div>
+                  <div class="series-actions"><span id="drawer-list-slot" class="drawer-list-slot"></span><button id="drawer-detail" class="pill-btn" type="button">详情</button></div>
+                </div>
+              </div>
+              <p id="series-intro" title="点击展开 / 收起"></p>
+              <div class="episode-header"><strong>选集</strong><span id="episode-total"></span></div>
+              <div id="episode-ranges" class="range-tabs"></div>
+            </div>
+            <div id="episodes" class="episodes"></div>
+          </aside>
+        </div>
+        <div class="comments drawer" aria-label="评论">
+          <div class="drawer-top">
+            <button class="drawer-close" type="button" aria-label="关闭评论"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+            <div class="comments-head">
+              <div id="comment-tabs" class="comment-tabs" role="tablist">
+                <button type="button" role="tab" class="active" data-kind="episode" aria-selected="true">本集评论</button>
+                <button type="button" role="tab" data-kind="series" aria-selected="false">本剧评论</button>
+              </div>
+            </div>
+            <div class="comments-sub"><strong id="comments-title">本集评论</strong><span id="comments-count"></span></div>
+            <p id="comments-note" class="comments-note" hidden></p>
+          </div>
+          <div id="comments-list" class="comments-list">正在加载评论…</div>
+        </div>
+      </section>
+
+      <section id="library" class="library" hidden>
+        <div class="heading"><div><h1 id="library-title">小说阅读</h1><p id="library-subtitle">番茄小说官网推荐与公开搜索书目，可阅读网站开放的章节。</p></div></div>
+        <div id="book-topics" class="chips"><span class="topic-label">按题材</span><button class="genre-chip" data-book-topic="都市">都市</button><button class="genre-chip" data-book-topic="言情">言情</button><button class="genre-chip" data-book-topic="悬疑">悬疑</button><button class="genre-chip" data-book-topic="玄幻">玄幻</button><button id="book-discover" class="genre-chip" type="button">推荐探索</button></div>
+        <div id="library-status" class="status">正在载入书目…</div>
+        <div id="book-results" class="book-results"></div>
+        <button id="book-more" class="more" hidden>下滑自动加载更多书籍</button>
+        <section id="reader" class="reader" hidden>
+          <header class="reader-bar">
+            <button id="reader-back" class="reader-icon" type="button" aria-label="返回书目" title="返回书目（Esc）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H4m0 0 7-7m-7 7 7 7"/></svg></button>
+            <button id="toc-toggle" class="reader-icon" type="button" aria-label="目录" title="目录（T）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></button>
+            <div class="reader-heading"><strong id="book-title"></strong><span id="book-author"></span></div>
+            <button id="notes-toggle" class="reader-icon" type="button" aria-label="书签与笔记" title="书签与笔记（N）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9.5"/><path d="M8 13h5M8 17h8"/><path d="m18.4 2.6 3 3L14 13l-4 1 1-4z"/></svg></button>
+            <button id="bookmark-toggle" class="reader-icon" type="button" aria-label="给本页加书签（B）" title="给本页加书签（B）" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg></button>
+            <button id="shelf-toggle" class="reader-icon" type="button" aria-label="加入我的书架" title="加入我的书架" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path class="i-add" d="M12 6.5v7M8.5 10h7"/><path class="i-done" d="m8.8 10.2 2.3 2.3 4.2-4.6"/></svg></button>
+            <button id="reader-settings-toggle" class="reader-icon text" type="button" aria-label="阅读设置" title="阅读设置">Aa</button>
+          </header>
+
+          <aside id="chapter-panel" class="chapter-panel" aria-label="目录">
+            <div class="chapter-panel-head"><h2>目录</h2><span id="chapter-count"></span></div>
+            <div id="chapter-list" class="chapter-list"></div>
+          </aside>
+
+          <aside id="notes-panel" class="notes-panel" aria-label="书签与笔记">
+            <div class="chapter-panel-head"><h2>笔记</h2><span>保存在本机</span></div>
+            <div class="notes-tabs" role="tablist">
+              <button type="button" data-notes-filter="all" class="active">全部<i></i></button>
+              <button type="button" data-notes-filter="bookmark">书签<i></i></button>
+              <button type="button" data-notes-filter="note">划线笔记<i></i></button>
+            </div>
+            <div id="notes-list" class="notes-list"></div>
+          </aside>
+
+          <div id="note-bubble" class="note-bubble" hidden>
+            <button id="nb-highlight" type="button">划线</button>
+            <button id="nb-note" type="button">写笔记</button>
+            <button id="nb-copy" type="button">复制</button>
+            <button id="nb-delete" type="button">删除划线</button>
+          </div>
+
+          <div id="note-editor" class="note-editor" hidden role="dialog" aria-modal="true" aria-labelledby="note-editor-title">
+            <div class="note-card">
+              <h2 id="note-editor-title">笔记</h2>
+              <blockquote id="note-quote"></blockquote>
+              <textarea id="note-input" rows="6" maxlength="5000" placeholder="写下你的想法…（Ctrl+Enter 保存）"></textarea>
+              <div class="note-actions">
+                <button id="note-remove" class="reader-pill danger" type="button">删除</button>
+                <span></span>
+                <button id="note-cancel" class="reader-pill" type="button">取消</button>
+                <button id="note-save" class="reader-pill primary" type="button">保存</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="reader-settings" class="reader-settings" hidden>
+            <div class="rs-row"><span>字号</span><div class="rs-stepper"><button type="button" data-size="-1" aria-label="缩小字号">A−</button><output id="rs-size">19</output><button type="button" data-size="1" aria-label="放大字号">A+</button></div></div>
+            <div class="rs-row"><span>字体</span><div class="rs-seg" data-key="font"><button type="button" data-value="song">宋体</button><button type="button" data-value="kai">楷体</button><button type="button" data-value="hei">黑体</button></div></div>
+            <div class="rs-row"><span>行距</span><div class="rs-seg" data-key="leading"><button type="button" data-value="1.7">紧凑</button><button type="button" data-value="2">适中</button><button type="button" data-value="2.3">宽松</button></div></div>
+            <div class="rs-row"><span>纸张</span><div class="rs-paper" data-key="paper"><button type="button" data-value="paper" title="米黄"></button><button type="button" data-value="green" title="护眼"></button><button type="button" data-value="white" title="素白"></button><button type="button" data-value="night" title="夜读"></button></div></div>
+            <div class="rs-row"><span>版式</span><div class="rs-seg" data-key="layout"><button type="button" data-value="page">翻页</button><button type="button" data-value="scroll">滚动</button></div></div>
+          </div>
+
+          <div class="book-stage">
+            <button id="page-prev" class="page-turn prev" type="button" aria-label="上一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+            <article class="chapter-content book">
+              <div id="book-viewport" class="book-viewport">
+                <div id="book-flow" class="book-flow">
+                  <header class="chapter-head"><span id="chapter-kicker" class="chapter-kicker"></span><h2 id="chapter-title"></h2><i class="chapter-ornament" aria-hidden="true"></i></header>
+                  <div id="chapter-text" class="chapter-text"></div>
+                  <div id="chapter-end" class="chapter-end"></div>
+                </div>
+              </div>
+              <span class="book-spine" aria-hidden="true"></span>
+            </article>
+            <button id="page-next" class="page-turn next" type="button" aria-label="下一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+          </div>
+
+          <footer class="reader-foot">
+            <button id="chapter-prev" class="reader-pill" type="button">上一章</button>
+            <div class="reader-progress"><span id="chapter-position"></span><span id="page-position"></span></div>
+            <button id="chapter-next" class="reader-pill" type="button">下一章</button>
+            <div class="speech-controls"><button id="speak" class="reader-pill" type="button">▶ 开始朗读</button><button id="stop-speak" class="reader-pill" type="button">■ 停止</button><label>朗读 <select id="speech-speed"><option value="0.8">0.8×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><span id="speech-status"></span></div>
+          </footer>
+        </section>
+      </section>
+
+      <footer class="site-footer">
+        <p>果剧桌面 · 非官方桌面播放器。软件界面无广告，内容可用性取决于来源平台。</p>
+        <a href="https://github.com/zfdang/hongguo-open-player" target="_blank" rel="noreferrer">播放组件与开源许可 ↗</a>
+      </footer>
+    </main>
+
+    <div id="detail-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div class="modal-card">
+        <button id="detail-close" class="modal-close" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        <div class="modal-media">
+          <img id="detail-backdrop" class="modal-backdrop" alt="">
+          <img id="detail-poster" class="modal-poster" alt="">
+          <div class="modal-shade"></div>
+          <div class="modal-head">
+            <span class="hero-kicker"><i>果</i>短 剧</span>
+            <h2 id="detail-title"></h2>
+            <div class="modal-actions">
+              <button id="detail-play" class="cta-btn" type="button"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.6v14.8a.8.8 0 0 0 1.2.7l12-7.4a.8.8 0 0 0 0-1.4l-12-7.4A.8.8 0 0 0 7 4.6Z"/></svg><span id="detail-play-label">播放</span></button>
+              <button id="detail-list" class="round-btn list-toggle" type="button" aria-label="加入我的片单" title="加入我的片单"></button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="modal-main">
+            <div id="detail-meta" class="modal-meta"></div>
+            <p id="detail-intro" class="modal-intro"></p>
+          </div>
+          <aside class="modal-side">
+            <p id="detail-cast-line"></p>
+            <p id="detail-genres"></p>
+          </aside>
+        </div>
+        <section id="detail-cast-section" class="modal-section"><h3>演员</h3><div id="detail-cast" class="cast-row"></div></section>
+        <section class="modal-section">
+          <div class="modal-section-head"><h3>选集</h3><div id="detail-ranges" class="range-tabs"></div><span id="detail-episode-total"></span></div>
+          <div id="detail-episodes" class="modal-episodes"></div>
+        </section>
+      </div>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <aside id="update-banner" class="update-banner" hidden aria-live="polite">
+      <div class="update-head"><strong id="update-title">发现新版本</strong><button id="update-dismiss" class="update-x" type="button" aria-label="稍后再说">×</button></div>
+      <p id="update-notes" class="update-notes"></p>
+      <div id="update-bar" class="update-bar" hidden><i></i></div>
+      <div class="update-actions"><span id="update-progress"></span><button id="update-later" class="pill-btn" type="button">稍后</button><button id="update-go" class="cta-btn small" type="button">立即更新</button></div>
+    </aside>
+    <script src="./update.js" defer></script>
+  </div>
+</body>
+</html>

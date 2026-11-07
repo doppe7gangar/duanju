@@ -1,0 +1,64 @@
+{
+  "name": "guoju-desktop",
+  "version": "0.7.9",
+  "private": true,
+  "description": "非官方 Windows 短剧桌面播放器",
+  "main": "main.js",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable --x64 --publish never",
+    "check": "node --check main.js && node --check preload.js && node --check ui/app.js && node scripts/check-ui.cjs",
+    "icon": "node scripts/build-icon.cjs",
+    "release": "node scripts/release.cjs"
+  },
+  "dependencies": {
+    "axios": "^1.21.0",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "local.guoju.desktop",
+    "productName": "果剧桌面",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.js",
+      "extra-routes.js",
+      "app-comments.js",
+      "ui/**/*",
+      "assets/**/*",
+      "vendor/hongguo-open-player/src/server/**/*",
+      "vendor/fanqie/**/*",
+      "vendor/comments/**/*",
+      "package.json",
+      "README.md",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.md"
+    ],
+    "win": {
+      "icon": "assets/icon.ico"
+    },
+    "portable": {
+      "artifactName": "GuojuDesktop-${version}-win-x64.exe"
+    },
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "compression": "maximum",
+    "afterPack": "scripts/after-pack.cjs"
+  },
+  "updater": {
+    "provider": "github",
+    "owner": "doppe7gangar",
+    "repo": "duanju"
+  }
+}

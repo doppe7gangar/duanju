@@ -1,0 +1,7 @@
+node_modules/
+dist/
+smoke-data/
+smoke-logs/
+*.log
+vendor/hongguo-open-player/data/*.json
+vendor/hongguo-open-player/logs/
