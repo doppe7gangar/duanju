@@ -236,7 +236,7 @@ function renderHero(item) {
   hero.classList.toggle('has-wide-art', !!item.backdrop);
   $('#hero-title').textContent = item.series_title || '发现好剧';
   $('#hero-description').textContent = item.description || '选一部喜欢的短剧，从第一集开始。';
-  const meta = [String(item.category_label || '短剧').replace(/^官网\s*/, ''), ...(Array.isArray(item.tags) ? item.tags.slice(0, 3) : []), item.episode_count ? `全 ${item.episode_count} 集` : ''].filter(Boolean);
+  const meta = [item.rank ? `热播榜 No.${item.rank}` : '', String(item.category_label || '短剧').replace(/^官网\s*/, ''), ...(Array.isArray(item.tags) ? item.tags.slice(0, 3) : []), item.episode_count ? `全 ${item.episode_count} 集` : ''].filter(Boolean);
   $('#hero-meta').replaceChildren(...meta.map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
   const progress = readProgress(item.series_id);
   $('#hero-play-label').textContent = progress && Number.isInteger(progress.index) ? `继续观看 第 ${progress.index + 1} 集` : '播放';
@@ -321,9 +321,16 @@ async function loadCatalog(append = false) {
     const target = append ? state.cards.length + 12 : 28;
     if (!append && !state.keyword && state.category === 'discover') {
       try {
+        // The billboard follows the live 热播榜 (the website banners are hand-picked and rarely change);
+        // the banners stay as the fallback when the ranking is slow or unavailable.
+        const hot = Promise.race([api('/api/catalog?category=hot-drama&page=1'), new Promise(resolve => setTimeout(resolve, 3000))]).catch(() => null);
         const home = await api('/api/official/home');
+        const ranked = ((await hot)?.results || []).filter(item => item?.series_id && item.cover).slice(0, 6);
         if (request !== state.request) return;
-        setHeroItems(home.banners);
+        const wideArt = new Map((home.banners || []).filter(item => item.backdrop).map(item => [item.series_id, item.backdrop]));
+        setHeroItems(ranked.length >= 3
+          ? ranked.map((item, index) => ({ ...item, rank: index + 1, backdrop: item.backdrop || wideArt.get(item.series_id) || '' }))
+          : home.banners);
         // Each homepage row keeps all of its titles (rows may share a few, like any streaming home);
         // only the endless category feed below skips titles already shown.
         const homeIds = new Set();
