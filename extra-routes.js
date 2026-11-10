@@ -57,6 +57,78 @@ module.exports = app => {
       getPlaybackDevice(requestJson).catch(() => { /* registered on demand instead */ });
     } catch (_) { /* optional warm-up */ }
   }, 1500).unref?.();
+
+  // ---- More actors than the 剧星榜 (which is capped upstream at the top 50) ----
+  // Actors are gathered from the cast lists of popular live-action dramas: first the app's 真人热播榜,
+  // then the website's live-action listing page by page, so the list keeps growing as the user scrolls.
+  const dramaService = require('./vendor/hongguo-open-player/src/server/services/dramaService');
+  const ACTOR_PAGE = 40;
+  const actorPool = { actors: [], byId: new Map(), queue: [], seen: new Set(), webPage: 0, rankPage: 0, exhausted: false, expires: 0, job: null };
+  function resetActorPool() {
+    Object.assign(actorPool, { actors: [], byId: new Map(), queue: [], seen: new Set(), webPage: 0, rankPage: 0, exhausted: false, expires: Date.now() + 30 * 60 * 1000 });
+  }
+  function addCast(detail) {
+    for (const person of Array.isArray(detail?.celebrities) ? detail.celebrities : []) {
+      if (!/^\d{1,30}$/.test(person.actor_id || '') || !person.name) continue;
+      const known = actorPool.byId.get(person.actor_id);
+      if (known) { known.dramas++; continue; }
+      const actor = { actor_id: person.actor_id, name: String(person.name).slice(0, 40), avatar: safeImage(person.avatar), dramas: 1 };
+      actorPool.byId.set(actor.actor_id, actor);
+      actorPool.actors.push(actor);
+    }
+  }
+  async function refillDramaQueue() {
+    // Three pages of the live-action hot chart first (the most-watched casts), then the website listing.
+    if (actorPool.rankPage < 3) {
+      actorPool.rankPage++;
+      const data = await dramaService.catalog({ category: 'hot-real-drama', page: actorPool.rankPage }).catch(() => null);
+      for (const item of data?.results || []) if (item.series_id && !actorPool.seen.has(item.series_id)) { actorPool.seen.add(item.series_id); actorPool.queue.push(item.series_id); }
+      return;
+    }
+    if (actorPool.webPage >= 60) { actorPool.exhausted = true; return; }
+    actorPool.webPage++;
+    const data = await officialCatalogPage('real-drama', '', actorPool.webPage).catch(() => null);
+    if (!data?.results?.length && actorPool.webPage > 33) { actorPool.exhausted = true; return; }
+    for (const item of data?.results || []) if (!actorPool.seen.has(item.series_id)) { actorPool.seen.add(item.series_id); actorPool.queue.push(item.series_id); }
+  }
+  async function growActorPool(target) {
+    let idle = 0;
+    while (actorPool.actors.length < target && !actorPool.exhausted && idle < 6) {
+      if (!actorPool.queue.length) { await refillDramaQueue(); idle++; continue; }
+      idle = 0;
+      const batch = actorPool.queue.splice(0, 8);
+      const details = await Promise.all(batch.map(id => dramaService.getSeriesDetail(id).catch(() => null)));
+      details.forEach(addCast);
+    }
+  }
+  function ensureActorPool(target) {
+    if (actorPool.expires < Date.now() && !actorPool.job) resetActorPool();
+    if (actorPool.actors.length >= target || actorPool.exhausted) return Promise.resolve();
+    if (!actorPool.job) actorPool.job = growActorPool(target).finally(() => { actorPool.job = null; });
+    return actorPool.job.then(() => (actorPool.actors.length < target && !actorPool.exhausted ? ensureActorPool(target) : undefined));
+  }
+  app.get('/api/actor-discover', async (req, res) => {
+    try {
+      const query = String(req.query.q || '').trim().slice(0, 20);
+      if (query) {
+        // Search dramas by the name, then keep the cast members whose name matches.
+        const found = await dramaService.search(query, 1);
+        const ids = (found?.results || []).map(item => item.series_id).filter(Boolean).slice(0, 8);
+        const details = await Promise.all(ids.map(id => dramaService.getSeriesDetail(id).catch(() => null)));
+        const matches = new Map();
+        for (const detail of details) for (const person of detail?.celebrities || []) {
+          if (person.actor_id && person.name?.includes(query) && !matches.has(person.actor_id)) {
+            matches.set(person.actor_id, { actor_id: String(person.actor_id), name: String(person.name).slice(0, 40), avatar: safeImage(person.avatar) });
+          }
+        }
+        return res.json({ actors: [...matches.values()], has_more: false });
+      }
+      const page = Math.max(1, Math.min(100, Number.parseInt(req.query.page, 10) || 1));
+      await ensureActorPool(page * ACTOR_PAGE);
+      const actors = actorPool.actors.slice((page - 1) * ACTOR_PAGE, page * ACTOR_PAGE);
+      res.json({ actors, page, has_more: actors.length === ACTOR_PAGE && !(actorPool.exhausted && actorPool.actors.length <= page * ACTOR_PAGE) });
+    } catch (error) { failure(res, error); }
+  });
   app.get('/api/library/home', async (req, res) => {
     try {
       const client = await bookClient();

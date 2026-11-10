@@ -1,6 +1,8 @@
 const $ = selector => document.querySelector(selector);
 const state = { mode: 'drama', category: 'discover', genre: '', keyword: '', page: 0, hasMore: false, loading: false, autoLoadFailed: false, feedMore: {}, cards: [], hero: null, heroItems: [], heroIndex: 0, series: null, episodeIndex: 0, request: 0, quality: localStorage.getItem('guoju:quality') || 'auto', speed: Number(localStorage.getItem('guoju:speed')) || 1 };
-const names = { discover: '首页', 'hot-drama': '热门推荐', 'real-drama': '真人短剧', 'comic-drama': '精品漫剧', 'ai-drama': 'AI 短剧', 'official-real': '真人短剧', 'official-comic': '精品漫剧', 'official-ai': 'AI 短剧' };
+// 榜单 shows any list from the app's ranking page; the menu of groups and lists comes back with each page.
+state.rank = { group: 'all', list: 'ranklist_hot_play_sc', label: '热播榜' };
+const names = { discover: '首页', rank: '榜单', 'hot-drama': '热门推荐', 'real-drama': '真人短剧', 'comic-drama': '精品漫剧', 'ai-drama': 'AI 短剧', 'official-real': '真人短剧', 'official-comic': '精品漫剧', 'official-ai': 'AI 短剧' };
 const discoveryCategories = ['official-real', 'official-comic', 'official-ai'];
 const officialCategories = ['real-drama', 'comic-drama', 'ai-drama'];
 const video = $('#video');
@@ -236,7 +238,7 @@ function renderHero(item) {
   hero.classList.toggle('has-wide-art', !!item.backdrop);
   $('#hero-title').textContent = item.series_title || '发现好剧';
   $('#hero-description').textContent = item.description || '选一部喜欢的短剧，从第一集开始。';
-  const meta = [item.rank ? `热播榜 No.${item.rank}` : '', String(item.category_label || '短剧').replace(/^官网\s*/, ''), ...(Array.isArray(item.tags) ? item.tags.slice(0, 3) : []), item.episode_count ? `全 ${item.episode_count} 集` : ''].filter(Boolean);
+  const meta = [item.rank ? `${item.rankLabel || '热播榜'} No.${item.rank}` : '', String(item.category_label || '短剧').replace(/^官网\s*/, ''), ...(Array.isArray(item.tags) ? item.tags.slice(0, 3) : []), item.episode_count ? `全 ${item.episode_count} 集` : ''].filter(Boolean);
   $('#hero-meta').replaceChildren(...meta.map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
   const progress = readProgress(item.series_id);
   $('#hero-play-label').textContent = progress && Number.isInteger(progress.index) ? `继续观看 第 ${progress.index + 1} 集` : '播放';
@@ -265,38 +267,53 @@ function renderRecentRail() {
   } catch (_) {}
 }
 
-/* ---------- Genre dropdown ---------- */
-function renderGenres(genres) {
-  const wrap = $('#genres');
-  if (state.keyword || !Array.isArray(genres) || !genres.length) { wrap.hidden = true; return; }
-  const options = [{ slug: '', label: '全部题材' }, ...genres];
-  const current = options.find(option => option.slug === state.genre) || options[0];
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.className = 'genre-toggle';
-  toggle.textContent = current.slug ? current.label : '题材';
-  toggle.addEventListener('click', event => { event.stopPropagation(); wrap.classList.toggle('open'); });
-  const menu = document.createElement('div');
-  menu.className = 'genre-menu';
-  menu.append(...options.map(option => {
+/* ---------- Topic and ranking chips ---------- */
+function chipRow(options, activeId, onPick, className = '') {
+  const row = document.createElement('div');
+  row.className = `chips ${className}`.trim();
+  row.append(...options.map(option => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `genre-chip${state.genre === option.slug ? ' active' : ''}`;
+    button.className = `genre-chip${option.id === activeId ? ' active' : ''}`;
     button.textContent = option.label;
     button.addEventListener('click', () => {
-      state.genre = option.slug;
-      wrap.classList.remove('open');
-      toggle.textContent = option.slug ? option.label : '题材';
-      menu.querySelectorAll('.genre-chip').forEach(node => node.classList.toggle('active', node === button));
-      loadCatalog();
+      if (button.classList.contains('active')) return;
+      row.querySelectorAll('.genre-chip').forEach(node => node.classList.toggle('active', node === button));
+      onPick(option);
     });
     return button;
   }));
-  wrap.replaceChildren(toggle, menu);
-  wrap.classList.remove('open');
+  return row;
+}
+function renderGenres(genres) {
+  const wrap = $('#genres');
+  if (state.keyword || !Array.isArray(genres) || !genres.length) { wrap.hidden = true; return; }
+  const options = [{ id: '', label: '全部' }, ...genres.map(genre => ({ id: genre.slug, label: genre.label }))];
+  wrap.replaceChildren(chipRow(options, state.genre, option => { state.genre = option.id; loadCatalog(); }));
   wrap.hidden = false;
 }
-document.addEventListener('click', event => { if (!event.target.closest('#genres')) $('#genres').classList.remove('open'); });
+function renderRankTabs(groups) {
+  const wrap = $('#genres');
+  if (!Array.isArray(groups) || !groups.length) return;
+  const group = groups.find(item => item.id === state.rank.group) || groups[0];
+  state.rankGroupLabel = group.label;
+  const pickList = (list, groupId = group.id) => {
+    state.rank = { group: groupId, list: list.id, label: list.label };
+    loadCatalog();
+  };
+  wrap.replaceChildren(
+    chipRow(groups, group.id, picked => {
+      // Keep the same kind of list (热播榜, 新剧榜…) when switching between 全部 / 真人剧 / 漫剧 / AI剧.
+      const lists = groups.find(item => item.id === picked.id)?.lists || [];
+      const list = lists.find(item => item.label === state.rank.label) || lists[0];
+      if (list) pickList(list, picked.id);
+    }, 'rank-groups'),
+    chipRow(group.lists, state.rank.list, list => pickList(list), 'rank-lists'));
+  wrap.hidden = false;
+}
+function rankTitle() {
+  return state.rank.group === 'all' || !state.rankGroupLabel ? state.rank.label : `${state.rankGroupLabel} · ${state.rank.label}`;
+}
 
 /* ---------- Catalog ---------- */
 async function loadCatalog(append = false) {
@@ -344,6 +361,7 @@ async function loadCatalog(append = false) {
       } catch (_) { /* Category pages remain available if the homepage changes. */ }
     }
     let emptyPages = 0;
+    let deepPaging = false;
     do {
       const page = state.page + 1;
       let data;
@@ -382,6 +400,8 @@ async function loadCatalog(append = false) {
             state.genreSource = 'app';
           }
         }
+      } else if (state.category === 'rank') {
+        data = await api(`/api/catalog?category=${encodeURIComponent(`rank:${state.rank.group}:${state.rank.list}`)}&page=${page}`);
       } else {
         data = await api(`/api/catalog?category=${encodeURIComponent(state.category)}&genre=${encodeURIComponent(state.genre)}&page=${page}`);
       }
@@ -389,18 +409,24 @@ async function loadCatalog(append = false) {
       const known = new Set(state.cards.map(item => item.series_id));
       const results = (Array.isArray(data.results) ? data.results : []).filter(item => item.series_id && !known.has(item.series_id) && known.add(item.series_id));
       state.cards.push(...results);
-      if (!append && page === 1 && !state.keyword && !state.hero) setHeroItems(results.filter(item => item.cover).slice(0, 5));
+      if (!append && page === 1 && !state.keyword && !state.hero) {
+        const top = results.filter(item => item.cover).slice(0, 5);
+        setHeroItems(state.category === 'rank' ? top.map((item, index) => ({ ...item, rank: index + 1, rankLabel: state.rank.label })) : top);
+      }
       if (state.category === 'discover' && !state.keyword) {
         for (const category of discoveryCategories) {
           const group = results.filter(item => item.category_label === names[category]);
           renderRail(group, page === 1 ? `${names[category]} · 新上线` : `更多${names[category]}`);
         }
-      } else renderRail(results, page === 1 ? (state.keyword ? '搜索结果' : names[state.category]) : '继续浏览');
+      } else {
+        if (!append && page === 1 && state.category === 'rank') renderRankTabs(data.ranks);
+        renderRail(results, page === 1 ? (state.keyword ? '搜索结果' : state.category === 'rank' ? rankTitle() : names[state.category]) : '继续浏览');
+      }
       state.page = page;
       // Deep official paging (no topic) runs to ~400 pages; other sources stop at 50.
-      const deepPaging = !state.keyword && !state.genre && state.genreSource !== 'app' && (state.category === 'discover' || officialCategories.includes(state.category));
+      deepPaging = !state.keyword && !state.genre && state.genreSource !== 'app' && (state.category === 'discover' || officialCategories.includes(state.category));
       state.hasMore = !!data.hasMore && page < (deepPaging ? 2000 : 50);
-      if (!append && page === 1) renderGenres(data.genres);
+      if (!append && page === 1 && state.category !== 'rank') renderGenres(data.genres);
       emptyPages = results.length ? 0 : emptyPages + 1;
       if (state.cards.length) showStatus('');
       // Topic listings overlap, so a deep page can be all repeats: allow a longer run of them.

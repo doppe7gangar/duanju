@@ -7,6 +7,26 @@ const RANK_API = '/reading/bookapi/bookmall/cell/change/v';
 const CATEGORIES = { 'real-drama': ['default', 'short_play'], 'comic-drama': ['comic_series', 'comic_series'], 'ai-drama': ['ai_series', 'ai_series'] };
 const RANKS = { 'hot-drama': ['all', 'ranklist_hot_play_sc'], 'hot-real-drama': ['human', 'human_hot_play'],
   'hot-comic-drama': ['comic_series_rank', 'comic_series_hot_play'], 'hot-ai-drama': ['ai_playlet', 'ai_playlet_hot_play'] };
+// Any list from the app's 榜单 page, as rank:<group>:<list> (e.g. rank:human:human_new_rank). The reply is
+// checked against the requested selector, so an unknown id fails instead of showing another chart.
+function rankingFor(category) {
+  if (Object.hasOwn(RANKS, category)) return RANKS[category];
+  const match = /^rank:([a-z][a-z_]{0,39}):([a-z][a-z_]{0,59})$/.exec(String(category || ''));
+  return match && match[1] !== 'ranklist_celebrity' ? [match[1], match[2]] : null;
+}
+function rankMenu(view) {
+  const valid = id => /^[a-z][a-z_]{0,59}$/.test(id);
+  return (Array.isArray(view?.cell_selector?.outer_row?.items) ? view.cell_selector.outer_row.items : []).flatMap(item => {
+    const id = String(item?.selector_item_id || ''), label = cleanTitle(item?.show_name);
+    if (!valid(id) || id === 'ranklist_celebrity' || !label) return [];
+    const lists = (Array.isArray(item.sub_cell_selector?.outer_row?.items) ? item.sub_cell_selector.outer_row.items : []).flatMap(sub => {
+      const subId = String(sub?.selector_item_id || ''), subLabel = cleanTitle(sub?.show_name);
+      // 预约榜 lists unreleased dramas (and the app refuses it here), so it is left out.
+      return valid(subId) && subLabel && !/subscribe/.test(subId) ? [{ id: subId, label: subLabel }] : [];
+    });
+    return lists.length ? [{ id, label, lists }] : [];
+  });
+}
 const TIMEOUT_MS = 10000, CACHE_MS = 120000, MAX_SESSIONS = 32, MAX_PAGES = 8;
 const sessions = new Map();
 const appError = (message, code = 'APP_SCHEMA') => Object.assign(new Error(message), { code });
@@ -49,7 +69,7 @@ function parsePage(payload, category, genre, page, cursor, state, sourceUrl) {
   if (Number(payload.code) !== 0) throw appError('App 目录服务暂不可用', 'APP_BUSINESS');
   const data = payload.data;
   if (!data || typeof data !== 'object') throw appError('App 目录缺少列表数据');
-  const ranking = RANKS[category], view = data.cell_view;
+  const ranking = rankingFor(category), view = data.cell_view;
   let rows, genres = state.genres;
   if (ranking) {
     if (!Array.isArray(view?.cell_data)) throw appError('App 榜单结构异常');
@@ -73,7 +93,8 @@ function parsePage(payload, category, genre, page, cursor, state, sourceUrl) {
     }
   }
   const liveAction = category === 'real-drama' || category === 'hot-real-drama';
-  const results = cards(rows, category === 'hot-drama' ? [1, 1004] : liveAction ? [1] : [1004]);
+  const group = ranking?.[0];
+  const results = cards(rows, ['all', 'series_album'].includes(group) ? [1, 1004] : liveAction || group === 'human' ? [1] : [1004]);
   if (rows.length && !results.length) throw appError('App 目录未返回有效短剧');
   const more = (data.has_more ?? view?.has_more) === true;
   const offset = parseSearchInteger(data.next_offset ?? view?.next_offset);
@@ -81,15 +102,15 @@ function parsePage(payload, category, genre, page, cursor, state, sourceUrl) {
   if (more && (offset === null || offset <= cursor.offset || typeof sessionId !== 'string' || !sessionId || sessionId.length > 4096)) {
     throw appError('App 分页游标无效，请重新加载第 1 页', 'APP_CURSOR');
   }
-  return { response: { success: true, results, page, total: 0, totalPages: 0, hasMore: more && page < 50, genres, sourceUrl },
+  return { response: { success: true, results, page, total: 0, totalPages: 0, hasMore: more && page < 50, genres, sourceUrl, ...(ranking ? { ranks: rankMenu(view) } : {}) },
     next: more && page < 50 ? { offset, sessionId } : null };
 }
 
 async function browseList(options = {}) {
   const { category = 'real-drama', genre = '', page = 1, forceRefresh = false, catalogScope = 'default' } = options || {};
-  const pg = parseSearchInteger(page), ranking = RANKS[category];
+  const pg = parseSearchInteger(page), ranking = rankingFor(category);
   const sourceUrl = `${SITE}/${ranking ? 'rank' : 'category'}/${encodeURIComponent(category)}${pg > 1 ? `?page=${pg}` : ''}`;
-  if ((!Object.hasOwn(CATEGORIES, category) && !Object.hasOwn(RANKS, category) && category !== 'comic') ||
+  if ((!Object.hasOwn(CATEGORIES, category) && !ranking && category !== 'comic') ||
       !['default', 'browse'].includes(catalogScope) || typeof genre !== 'string' || (genre && (!/^cate_\d{1,8}$/.test(genre) || ranking)) || pg === null || pg < 1 || pg > 50) {
     return fail(appError('App 分类、题材或页码无效', 'APP_INPUT'), sourceUrl);
   }

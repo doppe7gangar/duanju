@@ -130,28 +130,14 @@ body.player-open .site-footer { display: none; }
 .browse[data-view="home"] > .heading { display: none; }
 .browse[data-view="home"] .hero { margin-top: 6px; }
 
-/* Genre dropdown */
-.genres { position: relative; }
-.genre-toggle {
-  display: inline-flex; align-items: center; gap: 12px;
-  padding: 6px 14px; border: 1px solid #ffffffb3; border-radius: 999px;
-  background: #000000a6; color: #fff; font-size: 14px; font-weight: 600;
-}
-.genre-toggle::after { content: ""; border: 5px solid transparent; border-top-color: #fff; border-bottom-width: 0; transition: transform .2s; }
-.genres.open .genre-toggle::after { transform: rotate(180deg); }
-.genre-toggle:hover { background: #ffffff1a; }
-.genre-menu {
-  position: absolute; top: calc(100% + 8px); left: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(3, minmax(120px, auto)); gap: 2px 8px;
-  padding: 12px 8px; border: 1px solid #ffffff26; border-radius: 6px;
-  background: #000000f2; box-shadow: 0 18px 40px #000c;
-  opacity: 0; visibility: hidden; transform: translateY(-6px);
-  transition: opacity .2s, transform .2s var(--ease), visibility .2s;
-}
-.genres.open .genre-menu { opacity: 1; visibility: visible; transform: none; }
-.genre-menu .genre-chip { border: 0; background: none; color: var(--text-2); text-align: left; padding: 6px 12px; font-size: 14px; border-radius: 4px; }
-.genre-menu .genre-chip:hover { background: #ffffff14; text-decoration: underline; }
-.genre-menu .genre-chip.active { color: #fff; font-weight: 700; }
+/* Topic and ranking chips: a full-width row under the page title */
+.browse > .heading { flex-wrap: wrap; row-gap: 14px; }
+.genres { order: 10; flex-basis: 100%; display: grid; gap: 10px; }
+.genres .chips { margin: 0; gap: 8px; }
+.genres .rank-groups .genre-chip { font-size: 14px; padding: 7px 18px; }
+.genres .rank-lists .genre-chip { padding: 4px 13px; border-color: transparent; color: var(--muted); }
+.genres .rank-lists .genre-chip:hover { border-color: #ffffff59; color: var(--text-2); }
+.genres .rank-lists .genre-chip.active { background: #ffffff24; border-color: transparent; color: #fff; }
 
 /* ---------------- Hero billboard ---------------- */
 .hero {
@@ -1069,16 +1055,11 @@ html[data-theme="light"] .subtle { background: #00000012; color: #111; }
 html[data-theme="light"] .subtle:hover:not(:disabled) { background: #00000021; }
 html[data-theme="light"] .browse > .heading #refresh { color: #5d5d5d; }
 html[data-theme="light"] .browse > .heading #refresh:hover { color: #111; background: #0000000d; }
-html[data-theme="light"] .genre-toggle { background: #fff; border-color: #00000033; color: #111; }
-html[data-theme="light"] .genre-toggle::after { border-top-color: #111; }
-html[data-theme="light"] .genre-toggle:hover { background: #f1efec; }
-html[data-theme="light"] .genre-menu { background: #fffffff7; border-color: #0000001a; box-shadow: 0 18px 40px #0000001f; }
-html[data-theme="light"] .genre-menu .genre-chip { color: #333; }
-html[data-theme="light"] .genre-menu .genre-chip:hover { background: #0000000a; }
-html[data-theme="light"] .genre-menu .genre-chip.active { color: #111; }
 html[data-theme="light"] .chips .genre-chip { border-color: #00000029; color: #333; }
 html[data-theme="light"] .chips .genre-chip:hover { background: #0000000a; border-color: #00000059; }
 html[data-theme="light"] .chips .genre-chip.active { background: #111; border-color: #111; color: #fff; }
+html[data-theme="light"] .genres .rank-lists .genre-chip { border-color: transparent; color: #666; }
+html[data-theme="light"] .genres .rank-lists .genre-chip.active { background: #0000000f; color: #111; }
 html[data-theme="light"] .more { border-color: #00000029; }
 html[data-theme="light"] .more:hover { color: #111; border-color: #111; }
 html[data-theme="light"] .rail-arrows button { background-color: #f4f3f199; filter: invert(1); }
