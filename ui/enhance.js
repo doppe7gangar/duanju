@@ -1,14 +1,8 @@
-// 画质增强: the platform's best stream is 1080P at well under 1 Mbps, which looks soft on a large
-// monitor. Each video frame is redrawn through WebGL before it is shown:
-//   标准 / 强 — one contrast-adaptive sharpening pass (in the spirit of AMD FidelityFX CAS) at screen size.
-//   超清     — "clean and crisp", modelled on what AI restoration (Real-ESRGAN) does to these frames,
-//              in three cheap passes at the on-screen size:
-//              1) high-quality resample: Catmull-Rom bicubic when enlarging, 4x supersampling when shrinking;
-//              2) edge-preserving (bilateral) smoothing of luma, which removes the encoder's grain and
-//                 blocking from skin and backgrounds without touching real edges;
-//              3) sharpening only where there is a real edge (eyes, brows, hair), pulling edge pixels
-//                 towards the side they belong to so lines get crisp without halos; part of the fine
-//                 texture is put back in flat areas so faces do not look plastic.
+// Local sharpening cannot recover detail lost in the source encode.
+// 标准 / 强: contrast-adaptive sharpening at screen size.
+// 精细 (stored as "ultra" for existing preferences): bicubic resampling followed by
+// the same sharpening, slightly stronger. No denoising: smoothing low-contrast
+// texture before sharpening made the previous 超清 mode softer than 强.
 // Falls back to the plain <video> if WebGL is unavailable.
 (() => {
   const canvas = $('#enhance-canvas');
@@ -20,14 +14,14 @@
   let mode = select.value;
   const programs = {};
   let videoTexture = null;
-  let stages = [];      // two offscreen render targets for 超清
+  let stages = [];      // one resampling target for 精细
   let stageSize = [0, 0];
 
   const VERTEX = `attribute vec2 p; varying vec2 uv;
     void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
 
   // 标准 / 强: single CAS pass straight to the screen-sized canvas.
-  const CAS = `precision mediump float;
+  const CAS = `precision highp float;
     uniform sampler2D frame; uniform vec2 px; uniform float sharpness; varying vec2 uv;
     void main() {
       vec3 c = texture2D(frame, uv).rgb;
@@ -43,61 +37,7 @@
       gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
     }`;
 
-  // 超清 pass 2: bilateral smoothing of luma over a radius-2 diamond (13 taps, range sigma 0.03), reading
-  // the luma pass 1 left in alpha. RGB is passed through; the smoothed luma goes in alpha for pass 3.
-  const DENOISE = `precision highp float;
-    uniform sampler2D frame; uniform vec2 px; varying vec2 uv;
-    void main() {
-      vec4 c = texture2D(frame, uv);
-      float sum = 0.0;
-      float weights = 0.0;
-      for (int j = -2; j <= 2; j++) {
-        for (int i = -2; i <= 2; i++) {
-          if (i * i + j * j > 4) continue;
-          float v = texture2D(frame, uv + vec2(float(i), float(j)) * px).a;
-          float range = (v - c.a) / 0.03;
-          float w = exp(-float(i * i + j * j) / 4.5 - range * range);
-          sum += v * w;
-          weights += w;
-        }
-      }
-      gl_FragColor = vec4(c.rgb, sum / weights);
-    }`;
-
-  // 超清 pass 3: edge-only sharpening on the smoothed luma, halo-free, with some texture put back.
-  const DETAIL = `precision highp float;
-    #define STRENGTH 4.5
-    #define SHOCK 0.75
-    #define SLACK 0.035
-    #define CLARITY 0.55
-    #define TEXTURE 0.8
-    uniform sampler2D frame; uniform vec2 px; varying vec2 uv;
-    float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
-    float at(float x, float y) { return texture2D(frame, uv + vec2(x, y) * px).a; }
-    void main() {
-      vec4 center = texture2D(frame, uv);
-      float y = luma(center.rgb);
-      float d = center.a;
-      float a = at(-1.0, -1.0), b = at(0.0, -1.0), c = at(1.0, -1.0);
-      float l = at(-1.0, 0.0), r = at(1.0, 0.0);
-      float f = at(-1.0, 1.0), g = at(0.0, 1.0), h = at(1.0, 1.0);
-      float mn = min(d, min(min(min(a, b), min(c, l)), min(min(r, f), min(g, h))));
-      float mx = max(d, max(max(max(a, b), max(c, l)), max(max(r, f), max(g, h))));
-      float gx = (c + 2.0 * r + h) - (a + 2.0 * l + f);
-      float gy = (f + 2.0 * g + h) - (a + 2.0 * b + c);
-      float edge = smoothstep(0.005, 0.025, 0.25 * sqrt(gx * gx + gy * gy));
-      float blur = (a + b + c + l + d + r + f + g + h) / 9.0;
-      // Local contrast ("clarity") from a 3px ring: makes features pop the way restoration models do.
-      float ring = 0.25 * (at(-3.0, 0.0) + at(3.0, 0.0) + at(0.0, -3.0) + at(0.0, 3.0));
-      float t = d + STRENGTH * edge * (d - blur);
-      t += SHOCK * edge * ((d < 0.5 * (mn + mx) ? mn : mx) - t);
-      t = clamp(t, mn - SLACK, mx + SLACK);
-      t += CLARITY * (d - ring);
-      t += TEXTURE * (1.0 - edge) * (y - d);
-      gl_FragColor = vec4(clamp(center.rgb + (t - y), 0.0, 1.0), 1.0);
-    }`;
-
-  // 超清 pass 1 (screen size): Catmull-Rom bicubic up, 4x supersampled down; luma goes in alpha.
+  // Detail-preserving resample: Catmull-Rom bicubic up, 4x supersampled down.
   const RESAMPLE = `precision highp float;
     uniform sampler2D frame; uniform vec2 srcSize; uniform vec2 outPx; uniform float shrinking; varying vec2 uv;
     vec3 catmullRom(vec2 coord) {
@@ -132,8 +72,7 @@
           + texture2D(frame, uv + vec2(-q.x, q.y)).rgb + texture2D(frame, uv + vec2(q.x, q.y)).rgb);
       } else color = catmullRom(uv);
       color = clamp(color, 0.0, 1.0);
-      // Luma in alpha for the 超清 smoothing pass.
-      gl_FragColor = vec4(color, dot(color, vec3(0.299, 0.587, 0.114)));
+      gl_FragColor = vec4(color, 1.0);
     }`;
 
   function compile(type, source) {
@@ -166,8 +105,6 @@
       gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
       if (!gl) throw new Error('WebGL unavailable');
       programs.cas = link(CAS, ['frame', 'px', 'sharpness']);
-      programs.denoise = link(DENOISE, ['frame', 'px']);
-      programs.detail = link(DETAIL, ['frame', 'px']);
       programs.resample = link(RESAMPLE, ['frame', 'srcSize', 'outPx', 'shrinking']);
       const buffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -175,7 +112,7 @@
       gl.enableVertexAttribArray(0);
       gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       videoTexture = makeTexture();
-      stages = [0, 1].map(() => ({ texture: makeTexture(), buffer: gl.createFramebuffer() }));
+      stages = [0].map(() => ({ texture: makeTexture(), buffer: gl.createFramebuffer() }));
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       return true;
     } catch (_) {
@@ -225,6 +162,7 @@
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, videoTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+      let sharpenSource = videoTexture;
       if (mode === 'ultra') {
         // Work at the on-screen size, so nothing added here is averaged away by a later downscale.
         const sw = video.videoWidth;
@@ -238,16 +176,12 @@
           // Bicubic keeps more detail for mild reductions; supersample only when shrinking below half.
           gl.uniform1f(u.shrinking, ow < sw * 0.5 ? 1 : 0);
         });
-        pass(programs.denoise, stages[0].texture, stages[1].buffer, ow, oh, u => gl.uniform2f(u.px, 1 / ow, 1 / oh));
-        pass(programs.detail, stages[1].texture, null, ow, oh, u => gl.uniform2f(u.px, 1 / ow, 1 / oh));
-      } else {
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.useProgram(programs.cas.program);
-        gl.uniform1i(programs.cas.uniforms.frame, 0);
-        gl.uniform2f(programs.cas.uniforms.px, 1 / canvas.width, 1 / canvas.height);
-        gl.uniform1f(programs.cas.uniforms.sharpness, Number(mode) || 0.5);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        sharpenSource = stages[0].texture;
       }
+      pass(programs.cas, sharpenSource, null, canvas.width, canvas.height, u => {
+        gl.uniform2f(u.px, 1 / canvas.width, 1 / canvas.height);
+        gl.uniform1f(u.sharpness, mode === 'ultra' ? 1.0 : Number(mode) || 0.5);
+      });
       if (!hasFrame) { hasFrame = true; canvas.classList.add('live'); }
     } catch (_) {
       failed = true;
