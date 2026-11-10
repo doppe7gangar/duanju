@@ -1,6 +1,6 @@
 {
   "name": "guoju-desktop",
-  "version": "0.7.9",
+  "version": "0.8.0",
   "private": true,
   "description": "非官方 Windows 短剧桌面播放器",
   "main": "main.js",
