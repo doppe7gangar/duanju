@@ -8,14 +8,15 @@
 const crypto = require('node:crypto');
 const { gzipSync } = require('node:zlib');
 const logger = require('../services/logger');
-const { createPlaybackDeviceRegistrar } = require('./playback-device');
+const { getPlaybackDevice } = require('./playback-device');
 const sm3 = require('./sm3');
+const { PlayerSigner } = require('./argus');
 const { normalizeDownloadQuality, meetsDownloadQuality } = require('./download-quality');
 const localId = () => String(1000000000000000n + BigInt('0x' + crypto.randomBytes(6).toString('hex')));
 const PROCESS_NONCE = crypto.randomBytes(18).toString('base64url');
 const PROCESS_STARTED = Date.now();
-const VIDEO_API = 'https://api5-normal-sinfonlineb.fqnovel.com/novel/player/multi_video_model/v1/';
-const VIDEO_TAB_API = 'https://api5-normal-sinfonlineb.fqnovel.com/reading/bookapi/video_tab/multi_video_model/v1/';
+const VIDEO_API = 'https://reading.snssdk.com/novel/player/multi_video_model/player/v1';
+const VIDEO_API_FALLBACK = 'https://api5-normal-sinfonlinea.fqnovel.com/novel/player/multi_video_model/player/v1';
 const SEARCH_API = 'https://api5-normal-sinfonlinea.fqnovel.com/reading/bookapi/search/tab/v';
 const VIDEO_UA = 'com.phoenix.read/71332 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)';
 const PLAYBACK_UA = 'com.phoenix.read/74332 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)';
@@ -30,8 +31,6 @@ const DEVICE = {
 };
 const PLAYBACK_DEVICE = { ...DEVICE, version_code: '74332', version_name: '7.4.3.32',
     manifest_version_code: '74332', update_version_code: '74332', pv_player: '74332' };
-const VIDEO_TAB_DEVICE = { ...DEVICE, version_code: '73932', version_name: '7.3.9.32',
-    manifest_version_code: '73932', update_version_code: '73932', pv_player: '73932' };
 function str(value, fallback = '') { return String(value == null ? fallback : value).trim(); }
 function cleanUrl(value) { return str(value).replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&'); }
 function jsonBody(value) { try { return JSON.parse(value); } catch { return null; } }
@@ -135,40 +134,23 @@ function helios(khronos) {
 }
 
 function branchOf(url, body, khronos) { const bodyMd5 = body ? crypto.createHash('md5').update(body).digest() : Buffer.alloc(16); const q = sm3(url.split('?')[1]); const iv = getIv(getIv(getIv(0x20230928, q), bodyMd5), le32(khronos)); const low = iv & 15; return low - (((low * 171) >> 9) * 3); }
-// video_tab GET parameters adapted from tsukiyo-zero/hongguoTV ContentRepository.kt,
-// via jackotom/hongguo-drama eeb0f4a9c8aa61e13b30a8225b754a82a419c503 (GPL-3.0-only).
-// Sign a bodyless GET with sixteen zero bytes, not MD5(empty).
-function playbackRequest(payload, identity, videoId = '') {
-    const body = videoId ? null : gzipSync(Buffer.from(payload));
+// Player protocol and full Argus/Ladon signing from upstream PR #92,
+// 3f687c5b07e04eb194141f8eeb78ded86d646024 (GPL-3.0-only).
+function playbackRequest(payload, identity, apiBase = VIDEO_API) {
+    const body = gzipSync(Buffer.from(payload));
     const khronos = Math.floor(Date.now() / 1000);
-    const ticket = Date.now();
-    const device = { ...(videoId ? VIDEO_TAB_DEVICE : PLAYBACK_DEVICE), ...identity };
-    const values = videoId ? { video_id: videoId, video_id_type: '0', device_level: '1',
-        need_all_video_definition: '1', need_mp4_align: '0', use_os_player: '0',
-        video_platform: '1024', source: '0', from_video_id: '' } : {};
-    let query, url, requestTicket;
-    for (let n = 0; n < 128; n += 1) {
-        requestTicket = String(ticket + n);
-        query = pythonUrlEncode({ ...device, ...values, ts: String(khronos), _rticket: requestTicket });
-        url = `${videoId ? VIDEO_TAB_API : VIDEO_API}?${query}`;
-        if (branchOf(url, body, khronos) === 0) break;
-        if (n === 127) throw new Error('无法生成播放请求签名');
-    }
+    const requestTicket = String(Date.now());
+    const { device_id, iid, cdid } = identity;
+    const query = pythonUrlEncode({ ...PLAYBACK_DEVICE, device_id, iid, cdid, _rticket: requestTicket });
+    const url = `${apiBase}?${query}`;
     const headers = {
-        'User-Agent': PLAYBACK_UA.replace('74332', device.version_code), Accept: 'application/json; charset=utf-8,application/x-protobuf',
-        'sdk-version': '2', 'passport-sdk-version': videoId ? '50561' : '5051452', 'x-xs-from-web': '0',
-        'x-ss-dp': '8662', 'x-ss-req-ticket': requestTicket,
-        'x-khronos': String(khronos),
-        'x-gorgon': xGorgon(query, body, khronos, Math.floor(Math.random() * 65536)),
-        'x-ladon': be32(khronos).toString('base64'), 'x-argus': le32(khronos).toString('base64'),
-        'x-helios': helios(khronos), 'x-medusa': buildMedusa(url, body, khronos, device),
-        'x-tt-dt': '', 'x-tt-store-region': 'cn', 'x-tt-store-region-src': 'did',
-        Connection: 'close',
+        'User-Agent': PLAYBACK_UA, Accept: 'application/json; charset=utf-8,application/x-protobuf',
+        'Content-Type': 'application/json; charset=UTF-8', 'Content-Encoding': 'gzip',
+        'sdk-version': '2', 'passport-sdk-version': '5051452', 'x-xs-from-web': '0', 'x-ss-dp': '8662',
+        ...PlayerSigner.headers(query, body, khronos),
+        Cookie: identity.cookie || `store-region=cn-bj; store-region-src=did; install_id=${iid}`,
     };
-    if (body) Object.assign(headers, { 'Content-Type': 'application/json; charset=UTF-8',
-        'Content-Encoding': 'gzip', 'x-ss-stub': md5(body) });
-    else headers['x-tt-request-tag'] = 't=0;n=0';
-    return { url, body, headers, method: videoId ? 'GET' : 'POST' };
+    return { url, body, headers, method: 'POST' };
 }
 
 function parseSearchInteger(value) {
@@ -352,24 +334,21 @@ async function fetchAppPlayUrl(vid, options = {}) {
     const timeoutSignal = AbortSignal.timeout(12000);
     const signal = options.signal ? AbortSignal.any([timeoutSignal, options.signal]) : timeoutSignal;
     const payload = JSON.stringify({
+        dr_scene: 'player',
         biz_param: { detail_page_version: 0, device_level: 3, disable_digg_stat: false, need_all_video_definition: true, need_mp4_align: false, use_os_player: false, use_server_dns: false, video_platform: 1024 },
         mixed_video_id_map: { '1004': [vid] },
     });
-    // The API consumes an anonymous identity after one successful model request.
-    // Playback and prefetch must never share it, even when registration overlaps.
-    const playbackDevice = createPlaybackDeviceRegistrar();
-    let device = await playbackDevice(requestJson, signal);
-    let signed = playbackRequest(payload, device, vid);
+    // Full signatures allow playback and prefetch to reuse our registered identity.
+    const device = await getPlaybackDevice(requestJson, signal);
+    let signed = playbackRequest(payload, device);
     let response;
     try {
         response = await requestJson(signed.url, { method: signed.method, headers: signed.headers, data: signed.body }, deadline, signal);
     } catch (err) {
         signal.throwIfAborted();
         if (err.code === 'EMPTY_RESPONSE') {
-            logger.warn('AppSource', 'video_tab 接口返回空响应，使用独立设备尝试兼容播放接口...');
-            playbackDevice.reset(device);
-            device = await playbackDevice(requestJson, signal);
-            signed = playbackRequest(payload, device);
+            logger.warn('AppSource', '播放接口返回空响应，使用同一匿名设备尝试备用播放接口...');
+            signed = playbackRequest(payload, device, VIDEO_API_FALLBACK);
             response = await requestJson(signed.url, { method: signed.method, headers: signed.headers, data: signed.body }, deadline, signal);
         } else {
             throw err;

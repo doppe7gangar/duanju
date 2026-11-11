@@ -6,7 +6,7 @@
 - 获取时提交：`7bea0808576fa5112d68fa91bc776df206d82508`
 - 本地改动：`src/server/index.js` 允许通过 `HONGGUO_CLIENT_DIR` 指定自制界面目录。
 - 播放请求格式同步上游 PR #88（`43b5e7ad746fce983ed862fa7f4919d0e84772b8`）：gzip 正文及签名、7.4.3.32 播放配置与请求头。
-- 当前 `video_tab` 播放接口参数参考 `tsukiyo-zero/hongguoTV` 的 `ContentRepository.kt`，经 `jackotom/hongguo-drama` 提交 `eeb0f4a9c8aa61e13b30a8225b754a82a419c503` 的 `src/native/app-source.js` 适配（GPL-3.0-only）。本地改动：优先使用该接口，兼容两种响应封装，并隔离并发取址使用的匿名设备。
+- 播放请求同步上游 PR #92（`3f687c5b07e04eb194141f8eeb78ded86d646024`）：`multi_video_model/player/v1` 主备接口、`dr_scene`、匿名安装标识 Cookie，以及完整的 Argus 551 / Ladon 签名。新增 `argus.js` 及其测试保留 GPL-3.0-only 声明。本地保留画质、片源选择与兼容编码逻辑，并复用本进程注册的匿名设备。
 - 上游仓库根目录的许可文本为 AGPL-3.0；部分源码文件标注 GPL-3.0-only。为保留上游义务，本项目按 AGPL-3.0 提供源码与许可。若需要重新分发，请核对上游每个文件的版权与许可要求。
 
 Electron、Express 和 Axios 通过 npm 安装，各自许可见安装包中的 `node_modules` 元数据。
