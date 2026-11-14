@@ -17,6 +17,9 @@ const PROCESS_NONCE = crypto.randomBytes(18).toString('base64url');
 const PROCESS_STARTED = Date.now();
 const VIDEO_API = 'https://reading.snssdk.com/novel/player/multi_video_model/player/v1';
 const VIDEO_API_FALLBACK = 'https://api5-normal-sinfonlinea.fqnovel.com/novel/player/multi_video_model/player/v1';
+const PLAYBACK_APIS = [VIDEO_API, VIDEO_API_FALLBACK];
+const MAX_PLAYBACK_DEVICES = 5;
+const workingPlaybackApi = new WeakMap();
 const SEARCH_API = 'https://api5-normal-sinfonlinea.fqnovel.com/reading/bookapi/search/tab/v';
 const VIDEO_UA = 'com.phoenix.read/71332 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)';
 const PLAYBACK_UA = 'com.phoenix.read/74332 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)';
@@ -339,20 +342,35 @@ async function fetchAppPlayUrl(vid, options = {}) {
         mixed_video_id_map: { '1004': [vid] },
     });
     // Full signatures allow playback and prefetch to reuse our registered identity.
-    const device = await getPlaybackDevice(requestJson, signal);
-    let signed = playbackRequest(payload, device);
+    // 果剧桌面: the server decides per anonymous device which player endpoint answers — measured
+    // on fresh devices, some answer only the primary, some only the backup, and 20–40% of them
+    // neither. A device keeps its behaviour, so remember the endpoint that worked (also across
+    // launches, see playback-device.js), and replace a device that both endpoints reject instead
+    // of failing every episode until restart.
     let response;
-    try {
-        response = await requestJson(signed.url, { method: signed.method, headers: signed.headers, data: signed.body }, deadline, signal);
-    } catch (err) {
-        signal.throwIfAborted();
-        if (err.code === 'EMPTY_RESPONSE') {
-            logger.warn('AppSource', '播放接口返回空响应，使用同一匿名设备尝试备用播放接口...');
-            signed = playbackRequest(payload, device, VIDEO_API_FALLBACK);
-            response = await requestJson(signed.url, { method: signed.method, headers: signed.headers, data: signed.body }, deadline, signal);
-        } else {
-            throw err;
+    for (let attempt = 0; !response; attempt++) {
+        const device = await getPlaybackDevice(requestJson, signal);
+        const preferred = workingPlaybackApi.get(device) ?? (PLAYBACK_APIS.includes(device.api) ? device.api : undefined);
+        const apis = preferred ? [preferred, ...PLAYBACK_APIS.filter(api => api !== preferred)] : PLAYBACK_APIS;
+        for (const api of apis) {
+            const signed = playbackRequest(payload, device, api);
+            try {
+                response = await requestJson(signed.url, { method: signed.method, headers: signed.headers, data: signed.body }, deadline, signal);
+                workingPlaybackApi.set(device, api);
+                getPlaybackDevice.markVerified(device, api);
+                break;
+            } catch (err) {
+                signal.throwIfAborted();
+                if (err.code !== 'EMPTY_RESPONSE') throw err;
+                if (workingPlaybackApi.get(device) === api) workingPlaybackApi.delete(device);
+            }
         }
+        if (response) break;
+        if (attempt >= MAX_PLAYBACK_DEVICES - 1) {
+            throw Object.assign(new Error('App 接口返回空响应，可能是签名或设备鉴权问题'), { code: 'EMPTY_RESPONSE' });
+        }
+        logger.warn('AppSource', `匿名设备 ${device.device_id} 的播放接口均返回空响应，更换设备重试...`);
+        getPlaybackDevice.reset(device);
     }
     if (Number(response.Code || response.code || 0) !== 0) throw Object.assign(new Error('App 接口暂未提供本集播放信息'), { code: 'BUSINESS_REJECTED' });
     const entry = (response.data?.video_model_data ?? response.data)?.[vid];

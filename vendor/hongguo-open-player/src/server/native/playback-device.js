@@ -5,8 +5,49 @@
 // (itself adapted from charlie901208/HGTV feat/phone-login, GPL-3.0-only).
 // Changes: fixed anonymous phone profile; process-only identity; no cookies or tokens.
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { gzipSync } = require('node:zlib');
 const logger = require('../services/logger');
+
+// 果剧桌面: the server decides at registration whether an anonymous device may play — a fresh
+// device is dead on both player endpoints 20–40% of the time and stays dead, while a working one
+// keeps working. So a device that has played is saved and reused across launches instead of
+// rolling a new one every start. Only enabled when the app sets a data directory (not in tests).
+const ID_PATTERN = /^\d{1,30}$/;
+function deviceFile() {
+    return process.env.HONGGUO_DATA_DIR ? path.join(process.env.HONGGUO_DATA_DIR, 'device.json') : null;
+}
+function loadVerifiedDevice() {
+    const file = deviceFile();
+    if (!file) return null;
+    try {
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (![data?.device_id, data?.iid].every(value => typeof value === 'string' && ID_PATTERN.test(value) && /[1-9]/.test(value))
+            || typeof data.cdid !== 'string' || !data.cdid) return null;
+        return Object.freeze({ device_id: data.device_id, iid: data.iid, cdid: data.cdid,
+            api: typeof data.api === 'string' ? data.api : undefined });
+    } catch (error) {
+        if (error.code !== 'ENOENT') logger.warn('PlaybackDevice', `读取已验证设备失败，将重新注册: ${error.message}`);
+        return null;
+    }
+}
+function saveVerifiedDevice(device, api) {
+    const file = deviceFile();
+    if (!file) return;
+    try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const temp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(temp, JSON.stringify({ device_id: device.device_id, iid: device.iid, cdid: device.cdid, api, verified_at: Date.now() }));
+        fs.renameSync(temp, file);
+    } catch (error) {
+        logger.warn('PlaybackDevice', `保存已验证设备失败: ${error.message}`);
+    }
+}
+function removeVerifiedDevice() {
+    const file = deviceFile();
+    if (file) fs.rm(file, { force: true }, () => {});
+}
 
 const REGISTER_URL = 'https://log5-applog-lf.fqnovel.com/service/2/device_register/?tt_data=a&cronet_version=8d40f833_2026-03-03&ttnet_version=4.2.243.31-douyin&use_store_region_cookie=1';
 const KDF_SALT = Buffer.from('4dd4c2e6b83162090e52b3c7a6733ba41cb2462b829ab58a196b39db57177524f49baf7f08e8d68d26a72e37c1a95a2f1f05a51892aef2949732b62a38aadd58', 'hex');
@@ -85,10 +126,19 @@ function createPlaybackDeviceRegistrar() {
     let registration;
     let request;
     let currentDevice;
-    let lastRequestJson;
+    let verifiedApi;
+    let checkedSaved = false;
     const registrar = function getPlaybackDevice(requestJson, signal) {
         if (signal?.aborted) return Promise.reject(signal.reason);
-        lastRequestJson = requestJson;
+        if (!checkedSaved) {
+            checkedSaved = true;
+            const saved = loadVerifiedDevice();
+            if (saved) {
+                logger.info('PlaybackDevice', `复用已验证的匿名设备: device_id=${saved.device_id}`);
+                verifiedApi = saved.api;
+                registration = Promise.resolve(currentDevice = saved);
+            }
+        }
         // Concurrent playback/search requests share registration. Retries reuse the
         // same encrypted payload and identity, including after an exhausted attempt.
         registration ||= Promise.resolve().then(async () => {
@@ -130,15 +180,16 @@ function createPlaybackDeviceRegistrar() {
         registration = undefined;
         request = undefined;
         currentDevice = undefined;
+        verifiedApi = undefined;
+        checkedSaved = true;
+        removeVerifiedDevice();
         return true;
     };
-    // 果剧桌面: the playback API answers each anonymous device only once — the next request with it
-    // comes back empty, which used to cost a failed call plus a fresh registration (~1 s) every time
-    // an episode started. After a successful use, retire the device and register the next one in the
-    // background so the following playback request starts with a ready device.
-    registrar.retire = function retirePlaybackDevice(usedDevice) {
-        if (!registrar.reset(usedDevice) || !lastRequestJson) return;
-        registrar(lastRequestJson).catch(() => { /* a failed pre-registration is retried on demand */ });
+    // Record that a device played, and through which endpoint, so the next launch reuses it.
+    registrar.markVerified = function markPlaybackDeviceVerified(device, api) {
+        if (device !== currentDevice || verifiedApi === api) return;
+        verifiedApi = api;
+        saveVerifiedDevice(device, api);
     };
     return registrar;
 }

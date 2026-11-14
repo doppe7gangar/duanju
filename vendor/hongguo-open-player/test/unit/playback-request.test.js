@@ -76,6 +76,33 @@ test('empty primary player response retries the signed backup using the register
   assert.equal(devices[0], devices[1]);
 });
 
+test('a device rejected by both player endpoints is replaced, and its successor keeps the working endpoint', async t => {
+  const vid = '7702764976515075096';
+  const calls = [];
+  const registrations = mockTransport(t, config => {
+    const url = new URL(config.url);
+    const device = url.searchParams.get('device_id');
+    calls.push(`${device}@${url.hostname}`);
+    // Device 1 is dead on both endpoints; device 2 only answers the backup.
+    if (device === '1' || url.hostname === 'reading.snssdk.com') return '';
+    return model(vid);
+  });
+  assert.equal((await appSource.fetchAppPlayUrl(vid)).vid, vid);
+  assert.equal(registrations(), 2);
+  assert.deepEqual(calls, ['1@reading.snssdk.com', '1@api5-normal-sinfonlinea.fqnovel.com',
+    '2@reading.snssdk.com', '2@api5-normal-sinfonlinea.fqnovel.com']);
+  calls.length = 0;
+  assert.equal((await appSource.fetchAppPlayUrl(vid)).vid, vid);
+  assert.deepEqual(calls, ['2@api5-normal-sinfonlinea.fqnovel.com']);
+  assert.equal(registrations(), 2);
+});
+
+test('playback gives up with EMPTY_RESPONSE after five dead devices', async t => {
+  const registrations = mockTransport(t, () => '');
+  await assert.rejects(appSource.fetchAppPlayUrl('7702764976515075096'), { code: 'EMPTY_RESPONSE' });
+  assert.equal(registrations(), 5);
+});
+
 test('simultaneous playback and prefetch share one reusable registered identity', async t => {
   const devices = [];
   const registrations = mockTransport(t, async config => {
