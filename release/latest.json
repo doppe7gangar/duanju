@@ -1,0 +1,9 @@
+{
+  "tag": "v0.8.12",
+  "version": "0.8.12",
+  "name": "GuojuDesktop-0.8.12-win-x64.exe",
+  "url": "https://together.qqkid.link/updates/guoju/files/GuojuDesktop-0.8.12-win-x64.exe",
+  "size": 155280779,
+  "sha256": "0d463abe8e7caba7921ed2aac36ee63a8115fb0622a929809c64d375d72239d3",
+  "notes": "优化朋友加载较慢时的一起看同步，并接入直连更新源。\n\n- 新增准备/缓冲状态反馈，房主可等待慢速朋友，最多 25 秒，可关闭等待或点播放继续。\n- 缓冲期间不再反复跳转追赶；恢复后对齐，限制连续跳转，缓冲不足时不加速。新加入房间直接从房主进度开始加载。\n- 保留手动暂停，自动同步不会反向误发控制；最近视频块复用，减少重复下载。\n- 检查和下载安装更新优先走 together.qqkid.link，签名与 SHA256 校验；保留 GitHub 备用入口。\n- 服务端已升级协议 v3，双方更新到 0.8.12 后可使用完整的就绪反馈。旧版仍兼容加入。\n\n验证：49 项基础/播放/同步回归、6 项 WebSocket 协议测试、双客户端实际脚本与模拟媒体集成、6 项部署回归通过；线上部署通过本机/公网双端 WebSocket、更新清单、安装包分段下载与服务健康检查。\n\n限制：未完成实际显卡、片源与跨地区网络实播，不能保证消除所有卡顿；上游播放组件首次准备异常仍需单独处理。\n\nWindows x64：下载 Assets 中的 GuojuDesktop-0.8.12-win-x64.exe，关闭旧版后运行；已安装直连更新版的用户也可在 App 内检查更新。\n国内直连：https://together.qqkid.link/updates/guoju/files/GuojuDesktop-0.8.12-win-x64.exe\n\n源码保存在私有开发仓库，本公开仓库用于安装包和说明。\n\nSHA256: 0d463abe8e7caba7921ed2aac36ee63a8115fb0622a929809c64d375d72239d3\n"
+}

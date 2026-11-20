@@ -1,0 +1,58 @@
+{
+  "name": "Publish verified Guoju installer",
+  "on": {
+    "push": {
+      "branches": [
+        "main"
+      ],
+      "paths": [
+        "release/latest.json",
+        ".github/workflows/publish-guoju.yml"
+      ]
+    },
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "write"
+  },
+  "concurrency": {
+    "group": "guoju-installer-release",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "publish": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 20,
+      "env": {
+        "GH_TOKEN": "${{ github.token }}"
+      },
+      "steps": [
+        {
+          "name": "Read and validate release descriptor",
+          "id": "prepare",
+          "run": "set -euo pipefail\ngh api \"repos/$GITHUB_REPOSITORY/contents/release/latest.json?ref=$GITHUB_SHA\" --jq .content | base64 --decode > release.json\npython3 - <<'PYCODE'\nimport json,os,re\nfrom urllib.parse import urlparse\nfrom pathlib import Path\nd=json.loads(Path('release.json').read_text())\nassert re.fullmatch(r'v[0-9]+\\.[0-9]+\\.[0-9]+',d['tag'])\nassert d['version']==d['tag'][1:]\nassert d['name']=='GuojuDesktop-'+d['version']+'-win-x64.exe'\nassert d['url']=='https://together.qqkid.link/updates/guoju/files/'+d['name']\nassert re.fullmatch(r'[a-f0-9]{64}',d['sha256']) and 20*1024**2<=d['size']<=600*1024**2\nPath('release-notes.md').write_text(d['notes'])\nwith open(os.environ['GITHUB_OUTPUT'],'a') as f:\n for k in ['tag','version','name','url','sha256','size']: f.write(k+'='+str(d[k])+'\\n')\nPYCODE"
+        },
+        {
+          "name": "Download and verify the deployed installer",
+          "env": {
+            "ASSET_NAME": "${{ steps.prepare.outputs.name }}",
+            "ASSET_URL": "${{ steps.prepare.outputs.url }}",
+            "ASSET_SHA": "${{ steps.prepare.outputs.sha256 }}",
+            "ASSET_SIZE": "${{ steps.prepare.outputs.size }}"
+          },
+          "run": "set -euo pipefail\ncurl --proto '=https' --tlsv1.2 --fail --location --retry 3 --connect-timeout 15 --max-time 600 \"$ASSET_URL\" --output \"$ASSET_NAME\"\nprintf '%s  %s\\n' \"$ASSET_SHA\" \"$ASSET_NAME\" | sha256sum --check --strict -\npython3 - <<'PYCODE'\nimport os\nassert os.path.getsize(os.environ['ASSET_NAME'])==int(os.environ['ASSET_SIZE'])\nPYCODE"
+        },
+        {
+          "name": "Upload, verify and publish release",
+          "env": {
+            "RELEASE_TAG": "${{ steps.prepare.outputs.tag }}",
+            "ASSET_NAME": "${{ steps.prepare.outputs.name }}",
+            "ASSET_SHA": "${{ steps.prepare.outputs.sha256 }}",
+            "ASSET_SIZE": "${{ steps.prepare.outputs.size }}"
+          },
+          "run": "set -euo pipefail\nif ! gh release view \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" >/dev/null 2>&1; then\n gh release create \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" --target \"$GITHUB_SHA\" --draft --title \"果剧桌面 $RELEASE_TAG\" --notes-file release-notes.md\nfi\ngh api \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\" > existing-release.json\npython3 - <<'PYCODE'\nimport json,os\nfrom pathlib import Path\nassets=json.loads(Path('existing-release.json').read_text())['assets']\nexisting=next((a for a in assets if a['name']==os.environ['ASSET_NAME']),None)\nif existing:\n assert existing.get('digest')=='sha256:'+os.environ['ASSET_SHA'] and existing['size']==int(os.environ['ASSET_SIZE']), 'Existing asset differs; refusing to overwrite'\nwith open(os.environ['GITHUB_ENV'],'a') as f:f.write('ASSET_EXISTS='+('true' if existing else 'false')+'\\n')\nPYCODE\nASSET_EXISTS=$(python3 -c 'import json,os;d=json.load(open(\"existing-release.json\"));print(\"true\" if any(a[\"name\"]==os.environ[\"ASSET_NAME\"] for a in d[\"assets\"]) else \"false\")')\nif [ \"$ASSET_EXISTS\" != 'true' ]; then\n gh release upload \"$RELEASE_TAG\" \"$ASSET_NAME\" --repo \"$GITHUB_REPOSITORY\"\nfi\ngh api \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\" > uploaded-release.json\npython3 - <<'PYCODE'\nimport json,os\nfrom pathlib import Path\nasset=next(a for a in json.loads(Path('uploaded-release.json').read_text())['assets'] if a['name']==os.environ['ASSET_NAME'])\nassert asset.get('digest')=='sha256:'+os.environ['ASSET_SHA'] and asset['size']==int(os.environ['ASSET_SIZE'])\nPYCODE\ngh release edit \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" --draft=false --latest --title \"果剧桌面 $RELEASE_TAG\" --notes-file release-notes.md\n"
+        }
+      ]
+    }
+  }
+}
